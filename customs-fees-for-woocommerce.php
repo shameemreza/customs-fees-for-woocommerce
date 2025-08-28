@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/shameemreza/customs-fees-for-woocommerce
  * Description: Add transparent customs and import fee calculations to WooCommerce checkout. Simple fee tables similar to tax settings, no complex API integrations required.
  * Version: 1.0.0
- * Author: Shameem Reza
+ * Author: WooCommerce
  * Author URI: https://woocommerce.com
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -13,7 +13,7 @@
  * Requires at least: 6.0
  * Tested up to: 6.8
  * Requires PHP: 7.4
- * WC requires at least: 8.0
+ * WC requires at least: 9.0
  * WC tested up to: 10.1.2
  * Requires Plugins: woocommerce
  *
@@ -32,6 +32,56 @@ define( 'CFWC_PLUGIN_FILE', __FILE__ );
 define( 'CFWC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CFWC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'CFWC_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+
+/**
+ * Default strings (stored in options unlocalized; localized at display time).
+ */
+define( 'CFWC_DEFAULT_DISCLAIMER', 'Customs fees are estimates and actual fees at delivery may vary.' );
+define( 'CFWC_DEFAULT_TOOLTIP', 'Estimated import duties and taxes based on destination country.' );
+
+/**
+ * Check if WooCommerce is active.
+ *
+ * @since 1.0.0
+ * @return bool True if WooCommerce is active, false otherwise.
+ */
+/**
+ * Get disclaimer text with localization fallback at display time.
+ *
+ * Stored options are unlocalized to avoid early JIT loading. When displaying,
+ * return a translated default if the option is empty or equals the raw default.
+ *
+ * @since 1.0.0
+ * @return string
+ */
+function cfwc_get_disclaimer_text() {
+	$value = get_option( 'cfwc_disclaimer_text', '' );
+
+	if ( empty( $value ) || CFWC_DEFAULT_DISCLAIMER === $value ) {
+		return __( 'Customs fees are estimates and actual fees at delivery may vary.', 'customs-fees-for-woocommerce' );
+	}
+
+	return $value;
+}
+
+/**
+ * Get tooltip text with localization fallback at display time.
+ *
+ * Stored options are unlocalized to avoid early JIT loading. When displaying,
+ * return a translated default if the option is empty or equals the raw default.
+ *
+ * @since 1.0.0
+ * @return string
+ */
+function cfwc_get_tooltip_text() {
+	$value = get_option( 'cfwc_tooltip_text', '' );
+
+	if ( empty( $value ) || CFWC_DEFAULT_TOOLTIP === $value ) {
+		return __( 'Estimated import duties and taxes based on destination country.', 'customs-fees-for-woocommerce' );
+	}
+
+	return $value;
+}
 
 /**
  * Check if WooCommerce is active.
@@ -90,7 +140,17 @@ function cfwc_init() {
 	// Hook into WooCommerce.
 	add_action( 'woocommerce_init', 'cfwc_woocommerce_init' );
 }
-add_action( 'plugins_loaded', 'cfwc_init' );
+add_action( 'init', 'cfwc_init' );
+
+/**
+ * Load plugin textdomain.
+ *
+ * @since 1.0.0
+ */
+function cfwc_load_textdomain() {
+	load_plugin_textdomain( 'customs-fees-for-woocommerce', false, dirname( CFWC_PLUGIN_BASENAME ) . '/languages' );
+}
+add_action( 'init', 'cfwc_load_textdomain', 0 );
 
 /**
  * Declare HPOS and WooCommerce feature compatibility.
@@ -98,18 +158,21 @@ add_action( 'plugins_loaded', 'cfwc_init' );
  *
  * @since 1.0.0
  */
-add_action( 'before_woocommerce_init', function() {
-	if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
-		// High-Performance Order Storage (HPOS) compatibility.
-		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', CFWC_PLUGIN_FILE, true );
-		
-		// Cart and Checkout Blocks compatibility.
-		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'cart_checkout_blocks', CFWC_PLUGIN_FILE, true );
-		
-		// Product Block Editor compatibility.
-		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'product_block_editor', CFWC_PLUGIN_FILE, true );
+add_action(
+	'before_woocommerce_init',
+	function () {
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+			// High-Performance Order Storage (HPOS) compatibility.
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', CFWC_PLUGIN_FILE, true );
+
+			// Cart and Checkout Blocks compatibility.
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'cart_checkout_blocks', CFWC_PLUGIN_FILE, true );
+
+			// Product Block Editor compatibility.
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'product_block_editor', CFWC_PLUGIN_FILE, true );
+		}
 	}
-} );
+);
 
 /**
  * Include required plugin files.
@@ -217,7 +280,7 @@ function cfwc_calculate_customs_fees() {
 
 	// Get the calculator instance and calculate fees.
 	$calculator = new CFWC_Calculator();
-	$fees = $calculator->calculate_fees( WC()->cart );
+	$fees       = $calculator->calculate_fees( WC()->cart );
 
 	// Add fees to cart if any.
 	if ( ! empty( $fees ) ) {
@@ -242,9 +305,12 @@ function cfwc_activate() {
 	if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
 		deactivate_plugins( CFWC_PLUGIN_BASENAME );
 		wp_die(
-			esc_html__( 'Customs Fees for WooCommerce requires PHP 7.4 or higher.', 'customs-fees-for-woocommerce' ),
-			esc_html__( 'Plugin Activation Error', 'customs-fees-for-woocommerce' ),
-			array( 'response' => 200, 'back_link' => true )
+			esc_html( 'Customs Fees for WooCommerce requires PHP 7.4 or higher.' ),
+			esc_html( 'Plugin Activation Error' ),
+			array(
+				'response'  => 200,
+				'back_link' => true,
+			)
 		);
 	}
 
@@ -253,9 +319,12 @@ function cfwc_activate() {
 	if ( version_compare( $wp_version, '6.0', '<' ) ) {
 		deactivate_plugins( CFWC_PLUGIN_BASENAME );
 		wp_die(
-			esc_html__( 'Customs Fees for WooCommerce requires WordPress 6.0 or higher.', 'customs-fees-for-woocommerce' ),
-			esc_html__( 'Plugin Activation Error', 'customs-fees-for-woocommerce' ),
-			array( 'response' => 200, 'back_link' => true )
+			esc_html( 'Customs Fees for WooCommerce requires WordPress 6.0 or higher.' ),
+			esc_html( 'Plugin Activation Error' ),
+			array(
+				'response'  => 200,
+				'back_link' => true,
+			)
 		);
 	}
 
@@ -301,11 +370,11 @@ function cfwc_set_default_options() {
 	add_option( 'cfwc_rules', array() );
 	add_option( 'cfwc_display_mode', 'single' ); // single or breakdown.
 	add_option( 'cfwc_require_agreement', true );
-	add_option( 'cfwc_disclaimer_text', __( 'Customs fees are estimates and actual fees at delivery may vary.', 'customs-fees-for-woocommerce' ) );
+	add_option( 'cfwc_disclaimer_text', CFWC_DEFAULT_DISCLAIMER );
 
 	// Display settings.
 	add_option( 'cfwc_show_tooltip', true );
-	add_option( 'cfwc_tooltip_text', __( 'Estimated import duties and taxes based on destination country.', 'customs-fees-for-woocommerce' ) );
+	add_option( 'cfwc_tooltip_text', CFWC_DEFAULT_TOOLTIP );
 	add_option( 'cfwc_show_on_cart', true );
 	add_option( 'cfwc_show_on_checkout', true );
 
